@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ILP Backtest Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// Load fund data from external JSON file
+async function loadFundData() {
+  try {
+    const response = await fetch('fund_data.json');
+    const data = await response.json();
+    
+    // Restore date objects
+    for (const fund in data) {
+      data[fund] = data[fund].map(r => ({
+        ...r,
+        date: new Date(r.date)
+      }));
+    }
+    return data;
+  } catch(e) {
+    console.error('Failed to load fund data:', e);
+    return {};
+  }
+}
+
+const EMBEDDED_FUND_DATA = null; // Will be loaded from external file
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px;min-height:100vh}
+.wrap{max-width:1400px;margin:0 auto}
+.card{background:#fff;padding:25px;border-radius:12px;margin-bottom:20px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
+h1{font-size:28px;color:#333;margin-bottom:6px}
+h2{font-size:20px;color:#333;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #eee}
+h3{font-size:16px;font-weight:700;color:#333;margin:18px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:14px}
+label{display:block;font-weight:600;color:#444;margin-bottom:5px;font-size:14px}
+input,select{width:100%;padding:9px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:14px}
+input:focus,select:focus{outline:none;border-color:#667eea}
+select[multiple]{height:160px}
+select[multiple] option:checked{background:#667eea;color:#fff}
+small{display:block;color:#888;margin-top:3px;font-size:12px}
+.btn{padding:10px 18px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-right:8px;margin-bottom:8px;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.btn-green{background:#10b981;color:#fff}
+.btn-red{background:#ef4444;color:#fff}
+.btn-blue{background:#667eea;color:#fff}
+.btn-orange{background:#f59e0b;color:#fff}
+.run-btn{width:100%;padding:15px;font-size:18px;font-weight:700;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:16px}
+.run-btn:hover{background:#5568d3}
+.status{padding:12px 16px;border-radius:8px;margin:10px 0;font-size:14px}
+.status.ok{background:#d1fae5;color:#065f46}
+.status.err{background:#fee2e2;color:#991b1b}
+.status.info{background:#dbeafe;color:#1e40af}
+.info-box{background:#f0f9ff;border-left:4px solid #667eea;padding:14px;border-radius:6px;margin-bottom:14px;font-size:14px}
+.info-box li{margin:4px 0 4px 16px}
+.sel-box{background:#f0f9ff;border-left:4px solid #667eea;padding:12px;border-radius:8px;margin-top:10px;display:none}
+.sel-box.show{display:block}
+.badge{display:inline-block;background:#667eea;color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600;margin:2px;cursor:pointer}
+.badge:hover{background:#5568d3}
+.rg{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:18px;margin-bottom:18px}
+.metric{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f0f0f0;font-size:14px}
+.ml{color:#666}.mv{font-weight:600}
+.g{color:#10b981}.r{color:#ef4444}.b{color:#667eea;font-size:16px}
+.sec{background:#f0f9ff;padding:7px 12px;border-radius:6px;font-weight:700;font-size:14px;margin:10px 0 6px}
+.ftag{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:9px;border-radius:8px;text-align:center;font-weight:600;margin-bottom:14px;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:#f8f9fa;padding:10px;text-align:left;font-weight:700;border-bottom:2px solid #e0e0e0}
+td{padding:10px;border-bottom:1px solid #f0f0f0}
+tr:hover{background:#f9f9f9}
+.wr{background:#f0f9ff;font-weight:700;font-size:16px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="card">
+  <h1>🎯 ILP Historical Backtest</h1>
+  <p style="color:#666">Compare GWA4 vs GIA2 using actual historical fund data</p>
+  <div style="background:#f0f9ff;border-left:4px solid #667eea;padding:8px 12px;margin-top:10px;font-size:12px;color:#666">
+    <strong style="color:#667eea">⚠️ For Authorized Group Members Only</strong><br>
+    Unauthorized sharing or distribution is strictly prohibited.
+  </div>
+</div>
+
+<div class="card">
+  <h2>📁 Step 1: Upload Fund Data</h2>
+  <div class="info-box">
+    <strong>Upload price + dividend files together:</strong>
+    <ul>
+      <li>Price file: columns <strong>Price Date</strong> + <strong>Price</strong></li>
+      <li>Dividend file: columns <strong>XD Date</strong> + <strong>Gross Dividend</strong></li>
+      <li>Both files for same fund are matched automatically</li>
+    </ul>
+  </div>
+  <button class="btn btn-blue" id="viewBtn">📋 View Funds</button>
+  <button class="btn btn-red" id="deleteBtn">❌ Delete Funds</button>
+  <div id="statusBox"></div>
+</div>
+
+<div class="card">
+  <h2>⚙️ Step 2: Configure</h2>
+  <h3>GWA4 Settings</h3>
+  <div class="grid">
+    <div><label>Plan Type</label>
+      <select id="planType">
+        <option value="none">None (GIA Only)</option>
+        <option value="choice10" selected>Choice 10</option>
+        <option value="choice15">Choice 15</option>
+      </select></div>
+    <div><label>Payment Frequency</label>
+      <select id="gwa4Freq">
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select></div>
+    <div><label>Amount (S$)</label>
+      <input type="number" id="gwa4Amt" value="1000" min="100">
+      <small id="gwa4Lbl">Per month</small></div>
+    <div><label>Dividend Treatment</label>
+      <select id="gwa4Div">
+        <option value="na">NA (No Dividends)</option>
+        <option value="reinvest" selected>Reinvest</option>
+        <option value="withdraw">Withdraw</option>
+      </select></div>
+    <div><label>Promotional Bonus % (Year 1)</label>
+      <input type="number" id="promoBonus" value="20" min="0" max="100"></div>
+  </div>
+  <h3>GIA2 Settings</h3>
+  <div class="grid">
+    <div><label>Investment Type</label>
+      <select id="giaType">
+        <option value="none">None (GWA Only)</option>
+        <option value="monthly" selected>Monthly</option>
+        <option value="yearly">Yearly</option>
+        <option value="single">Single Premium</option>
+      </select></div>
+    <div><label>Amount (S$)</label>
+      <input type="number" id="giaAmt" value="1000" min="100">
+      <small id="giaLbl">Per month</small></div>
+    <div><label>Dividend Treatment</label>
+      <select id="giaDiv">
+        <option value="na">NA (No Dividends)</option>
+        <option value="reinvest">Reinvest</option>
+        <option value="withdraw">Withdraw</option>
+      </select></div>
+  </div>
+  <h3>Backtest Period</h3>
+  <div class="grid">
+    <div><label>Start Date</label><input type="date" id="startDate" value="2015-01-08"></div>
+    <div><label>Duration (Years)</label><input type="number" id="duration" value="10" min="1" max="30"></div>
+  </div>
+  <h3>Select Funds (1–5)</h3>
+  <button class="btn btn-green" onclick="selAll()">Select All</button>
+  <button class="btn btn-red" onclick="selClear()">Clear</button>
+  <small style="color:#ef4444;font-weight:600;display:inline-block;margin-bottom:6px">⚠️ Hold Cmd (Mac) / Ctrl (Windows) to select multiple</small>
+  <select id="fundSel" multiple onchange="updateBadges()">
+    <option disabled>Upload funds first</option>
+  </select>
+  <div id="selBox" class="sel-box">
+    <strong>Selected (<span id="selCount">0</span>/5):</strong>
+    <div id="badgeList" style="margin-top:6px"></div>
+  </div>
+  <button class="run-btn" onclick="runBacktest()">🚀 Run Historical Backtest</button>
+</div>
+
+<div id="results"></div>
+</div>
+
+<script>
+console.log('=== ILP Backtest Dashboard - Final Version ===');
+
+// ─── DATA (in-memory, no auto-storage) ────────────────────
+// To embed fund data permanently, replace {} below with exported JSON data
+let fundData = {}; // EMBED_DATA_HERE - See embed_data_instructions.md
+
+// ─── EXPORT/IMPORT ────────────────────────────────────────
+function makePermanent() {
+  if (!Object.keys(fundData).length) {
+    alert('No data to embed. Upload files first!');
+    return;
+  }
+  
+  const count = Object.keys(fundData).length;
+  const confirmed = confirm(`Create permanent version with ${count} funds embedded?\n\nThis will download a new HTML file that:\n✅ Contains all fund data\n✅ Works by just double-clicking\n✅ No upload/import needed\n\nShare this file in Telegram!`);
+  
+  if (!confirmed) return;
+  
+  try {
+    // Get the current page HTML using document
+    const htmlDoc = document.documentElement.cloneNode(true);
+    
+    // Find and replace the fundData line in the script
+    const scripts = htmlDoc.getElementsByTagName('script');
+    let scriptFound = false;
+    
+    for (let script of scripts) {
+      if (script.textContent.includes('let fundData = {};')) {
+        const dataStr = JSON.stringify(fundData, null, 2);
+        script.textContent = script.textContent.replace(
+          /let fundData = \{\};[^\n]*/,
+          `let fundData = ${dataStr};`
+        );
+        scriptFound = true;
+        break;
+      }
+    }
+    
+    if (!scriptFound) {
+      alert('Could not find data insertion point. Please try Export instead.');
+      return;
+    }
+    
+    // Remove Upload, Make Permanent, Export, Import buttons
+    const buttonsToRemove = ['uploadBtn', 'makePermBtn', 'exportBtn', 'importBtn'];
+    buttonsToRemove.forEach(btnId => {
+      const btn = htmlDoc.getElementById(btnId);
+      if (btn) btn.remove();
+    });
+    
+    // Remove file inputs
+    const fileInputs = htmlDoc.querySelectorAll('#fileInput, #importInput');
+    fileInputs.forEach(input => input.remove());
+    
+    // Get the full HTML
+    const fullHtml = '<!DOCTYPE html>\n' + htmlDoc.outerHTML;
+    
+    // Create download
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const date = new Date().toISOString().slice(0,10);
+    a.download = `ILP_Backtest_${date}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    alert(`✅ Created permanent version!\n\nFile downloaded: ILP_Backtest_${date}.html\n\nCheck your Downloads folder!\n\n📋 Share this file in Telegram\n👥 Members just download and double-click\n✨ Everything works automatically!`);
+    
+  } catch(e) {
+    console.error('Make permanent failed:', e);
+    alert('Make permanent failed: ' + e.message + '\n\nTry using the Export button instead.');
+  }
+}
+
+function exportToClipboard() {
+  if (!Object.keys(fundData).length) {
+    alert('No data to export. Upload files first.');
+    return;
+  }
+  
+  try {
+    const dataStr = JSON.stringify(fundData, null, 2);
+    navigator.clipboard.writeText(dataStr).then(() => {
+      alert(`✅ Data copied to clipboard!\n\n${Object.keys(fundData).length} funds exported\n\nNow:\n1. Open TextEdit\n2. Paste (Cmd+V)\n3. Save as "funddata.json"\n\nNext time, use Import to load this file.`);
+      setStatus(`✅ Exported ${Object.keys(fundData).length} funds to clipboard`, 'ok');
+    }).catch(err => {
+      // Fallback: show in dialog to copy manually
+      const textarea = document.createElement('textarea');
+      textarea.value = dataStr;
+      textarea.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;height:80%;z-index:10000;padding:20px;';
+      document.body.appendChild(textarea);
+      textarea.select();
+      alert('Copy failed. The data is shown below - select all (Cmd+A) and copy (Cmd+C), then save to a file.');
+    });
+  } catch(e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+
+function importFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      // Restore date objects
+      for (const fund in parsed) {
+        parsed[fund] = parsed[fund].map(r => ({ 
+          ...r, 
+          date: new Date(r.date) 
+        }));
+      }
+      fundData = parsed;
+      updateDropdown();
+      const total = Object.values(fundData).reduce((s,d) => s+d.length, 0);
+      const dc = Object.values(fundData).filter(d => d.some(r => r.dividend > 0)).length;
+      setStatus(`✅ Imported ${Object.keys(fundData).length} funds (${total} records, ${dc} with dividends)`, 'ok');
+    } catch(err) {
+      alert('Import failed: ' + err.message + '\n\nMake sure you selected a valid JSON file.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ─── STATUS ───────────────────────────────────────────────
+function setStatus(msg, type) {
+  document.getElementById('statusBox').innerHTML = msg
+    ? `<div class="status ${type}">${msg}</div>` : '';
+}
+
+// ─── DROPDOWN ─────────────────────────────────────────────
+function updateDropdown() {
+  const sel = document.getElementById('fundSel');
+  const names = Object.keys(fundData).sort();
+  sel.innerHTML = names.length
+    ? names.map(n => `<option value="${n}">${n}</option>`).join('')
+    : '<option disabled>Upload funds first</option>';
+  updateBadges();
+}
+
+function updateBadges() {
+  const sel = document.getElementById('fundSel');
+  const chosen = Array.from(sel.selectedOptions).map(o => o.value);
+  const box = document.getElementById('selBox');
+  if (chosen.length) {
+    box.classList.add('show');
+    document.getElementById('selCount').textContent = chosen.length;
+    document.getElementById('badgeList').innerHTML =
+      chosen.map(f => `<span class="badge" onclick="deselect('${f}')">${f} ×</span>`).join('');
+  } else {
+    box.classList.remove('show');
+  }
+}
+
+function deselect(name) {
+  Array.from(document.getElementById('fundSel').options)
+    .forEach(o => { if (o.value === name) o.selected = false; });
+  updateBadges();
+}
+
+function selAll() {
+  Array.from(document.getElementById('fundSel').options).slice(0,5)
+    .forEach(o => o.selected = true);
+  updateBadges();
+}
+
+function selClear() {
+  Array.from(document.getElementById('fundSel').options)
+    .forEach(o => o.selected = false);
+  updateBadges();
+}
+
+// ─── BUTTONS ──────────────────────────────────────────────
+// Attach handlers after DOM is loaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', attachButtonHandlers);
+} else {
+  attachButtonHandlers();
+}
+
+function attachButtonHandlers() {
+  console.log('Attaching button handlers...');
+  
+  const uploadBtn = document.getElementById('uploadBtn');
+  const makePermBtn = document.getElementById('makePermBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const viewBtn = document.getElementById('viewBtn');
+  const deleteBtn = document.getElementById('deleteBtn');
+  
+  if (!uploadBtn || !makePermBtn || !exportBtn || !importBtn || !viewBtn || !deleteBtn) {
+    console.error('Buttons not found!');
+    return;
+  }
+  
+  uploadBtn.onclick = () => document.getElementById('fileInput').click();
+  
+  makePermBtn.onclick = makePermanent;
+  
+  exportBtn.onclick = exportToClipboard;
+  
+  importBtn.onclick = () => document.getElementById('importInput').click();
+
+  viewBtn.onclick = function() {
+    console.log('View Funds clicked');
+    const names = Object.keys(fundData).sort();
+    if (!names.length) { alert('No funds loaded. Please upload files first.'); return; }
+    
+    let msg = `Loaded Funds (${names.length}):\n\n`;
+    names.forEach((n,i) => {
+      const d = fundData[n];
+      const dc = d.filter(r => r.dividend > 0).length;
+      const dates = d.map(r => r.date).sort((a,b) => a-b);
+      const startDate = dates[0]?.toLocaleDateString('en-GB') || 'N/A';
+      const endDate = dates[dates.length-1]?.toLocaleDateString('en-GB') || 'N/A';
+      msg += `${i+1}. ${n}\n`;
+      msg += `   Started: ${startDate}\n`;
+      msg += `   ${d.length} records, ${dc} dividends\n`;
+      msg += `   Data range: ${startDate} – ${endDate}\n\n`;
+    });
+    alert(msg);
+  };
+
+  deleteBtn.onclick = async function() {
+    const names = Object.keys(fundData).sort();
+    if (!names.length) { alert('No funds to delete.'); return; }
+    
+    // Create custom dialog with checkboxes
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:600px;max-height:80vh;overflow-y:auto;';
+    
+    let html = '<h2 style="margin:0 0 16px;color:#333">🗑️ Delete Funds</h2>';
+    html += '<p style="color:#666;margin-bottom:16px">Select funds to delete permanently:</p>';
+    
+    // Select All checkbox
+    html += `<div style="padding:12px;margin:8px 0;border:2px solid #667eea;border-radius:8px;background:#f0f9ff">
+      <label style="display:flex;align-items:center;cursor:pointer">
+        <input type="checkbox" id="selectAllFunds" onchange="toggleAllFunds(this)" style="width:18px;height:18px;margin-right:10px;cursor:pointer">
+        <strong style="color:#667eea">Select All / Deselect All</strong>
+      </label>
+    </div>`;
+    
+    // Individual fund checkboxes
+    names.forEach((name, i) => {
+      const d = fundData[name];
+      const dc = d.filter(r => r.dividend > 0).length;
+      const dates = d.map(r => r.date).sort((a,b) => a-b);
+      const startDate = dates[0]?.toLocaleDateString('en-GB') || 'N/A';
+      
+      html += `<div style="padding:12px;margin:8px 0;border:2px solid #e0e0e0;border-radius:8px">
+        <label style="display:flex;align-items:start;cursor:pointer">
+          <input type="checkbox" class="fundCheckbox" value="${name.replace(/"/g, '&quot;')}" style="width:18px;height:18px;margin-right:10px;margin-top:2px;cursor:pointer;flex-shrink:0">
+          <div style="flex:1">
+            <strong style="color:#333">${name}</strong><br>
+            <small style="color:#666">Started: ${startDate} | ${d.length} records, ${dc} dividends</small>
+          </div>
+        </label>
+      </div>`;
+    });
+    
+    // Buttons
+    html += '<div style="display:flex;gap:10px;margin-top:20px">';
+    html += '<button onclick="deleteSelectedFunds()" style="flex:1;padding:12px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Delete Selected</button>';
+    html += '<button onclick="document.querySelector(\'.overlay-delete\').remove()" style="flex:1;padding:12px;background:#667eea;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>';
+    html += '</div>';
+    
+    dialog.innerHTML = html;
+    overlay.appendChild(dialog);
+    overlay.className = 'overlay-delete';
+    document.body.appendChild(overlay);
+  };
+  
+  console.log('Button handlers attached successfully');
+}
+
+// Toggle all funds checkboxes
+window.toggleAllFunds = function(checkbox) {
+  const fundBoxes = document.querySelectorAll('.fundCheckbox');
+  fundBoxes.forEach(box => box.checked = checkbox.checked);
+};
+
+// Delete selected funds
+window.deleteSelectedFunds = async function() {
+  const selected = Array.from(document.querySelectorAll('.fundCheckbox:checked')).map(cb => cb.value);
+  
+  if (!selected.length) {
+    alert('Please select at least one fund to delete.');
+    return;
+  }
+  
+  const count = selected.length;
+  const fundsText = count === 1 ? selected[0] : `${count} funds`;
+  
+  if (!confirm(`Delete ${fundsText} permanently?\n\nThis cannot be undone.`)) return;
+  
+  // Delete selected funds
+  selected.forEach(name => delete fundData[name]);
+  
+  updateDropdown();
+  
+  // Remove the dialog
+  document.querySelector('.overlay-delete').remove();
+  
+  setStatus(`✅ Deleted ${count} fund${count > 1 ? 's' : ''} (remember to Export to save changes)`, 'ok');
+};
+
+// ─── FILE UPLOAD ──────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', async function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  setStatus(`⏳ Processing ${files.length} files...`, 'info');
+
+  fundData = {}; // Reset
+
+  // Step 1: Parse all files and group by cleaned name
+  const filesByName = {};
+  
+  for (const file of files) {
+    // Clean name - remove extension and timestamp
+    let fundName = file.name
+      .replace(/\.(xlsx|xls|csv)$/i, '')
+      .replace(/_?Download.*/i, '')
+      .replace(/_\d{2}_\d{2}_\d{4}_\d{2}_\d{2}_\d{2}$/i, '') // timestamp pattern
+      .replace(/_\d+$/i, '') // trailing numbers like _39, _03
+      .replace(/[_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    console.log(`FILE: "${file.name}" → "${fundName}"`);
+
+    if (!filesByName[fundName]) filesByName[fundName] = [];
+    filesByName[fundName].push(file);
+  }
+
+  // Step 2: Process each fund (may have 1 or 2 files)
+  for (const fundName in filesByName) {
+    const fundFiles = filesByName[fundName];
+    console.log(`\nProcessing "${fundName}" (${fundFiles.length} files)`);
+
+    let allPrices = [], allDividends = [];
+
+    for (const file of fundFiles) {
+      const result = await parseMultiSheetFile(file);
+      if (!result) continue;
+      allPrices.push(...result.prices);
+      allDividends.push(...result.dividends);
+    }
+
+    console.log(`  Total: ${allPrices.length} prices, ${allDividends.length} dividends`);
+
+    if (!allPrices.length) {
+      console.warn(`  No price data, skipping`);
+      continue;
+    }
+
+    // Merge
+    allPrices.sort((a,b) => a.date - b.date);
+    allDividends.sort((a,b) => a.date - b.date);
+
+    const priceDates = allPrices.map(p => p.date);
+    const divMap = {};
+    priceDates.forEach(d => { divMap[d.toISOString().slice(0,10)] = 0; });
+
+    allDividends.forEach(div => {
+      let target = priceDates[0];
+      for (let i = priceDates.length-1; i >= 0; i--) {
+        if (priceDates[i] <= div.date) { target = priceDates[i]; break; }
+      }
+      const k = target.toISOString().slice(0,10);
+      divMap[k] = (divMap[k]||0) + div.value;
+    });
+
+    fundData[fundName] = allPrices.map(p => ({
+      date: p.date,
+      price: p.value,
+      dividend: divMap[p.date.toISOString().slice(0,10)] || 0
+    }));
+
+    const dc = fundData[fundName].filter(r => r.dividend > 0).length;
+    console.log(`  Merged: ${fundData[fundName].length} records, ${dc} with dividends`);
+  }
+
+  updateDropdown();
+  const total = Object.values(fundData).reduce((s,d) => s+d.length, 0);
+  const dc = Object.values(fundData).filter(d => d.some(r => r.dividend > 0)).length;
+  setStatus(`✅ ${Object.keys(fundData).length} funds loaded (${total} records, ${dc} with dividends) - Click Export to save!`, 'ok');
+  
+  e.target.value = '';
+});
+
+// Import file handler
+document.getElementById('importInput').addEventListener('change', function(e) {
+  if (e.target.files.length) {
+    importFromFile(e.target.files[0]);
+    e.target.value = '';
+  }
+});
+
+// ─── PARSE MULTI-SHEET EXCEL ──────────────────────────────
+async function parseMultiSheetFile(file) {
+  return new Promise(res => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type:'binary' });
+        const result = { prices: [], dividends: [] };
+
+        // Read ALL sheets
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, { header:1 });
+          if (rows.length < 2) continue;
+
+          const headers = rows[0].map(h => String(h||'').toLowerCase().trim());
+          console.log(`  Sheet "${sheetName}": [${headers.join(' | ')}]`);
+
+          // Detect sheet type from headers
+          const hasDivCol = headers.some(h => h === 'gross dividend' || h === 'gross dividends');
+          const hasXDDate = headers.includes('xd date');
+          const hasPriceCol = headers.some(h => h === 'price' || h === 'nav');
+          const hasPriceDate = headers.includes('price date');
+
+          const isDividend = (hasDivCol || hasXDDate) && !hasPriceCol;
+          const isPrice = hasPriceCol || hasPriceDate;
+
+          console.log(`    Type: ${isDividend ? 'DIVIDEND' : isPrice ? 'PRICE' : 'UNKNOWN'}`);
+
+          if (!isDividend && !isPrice) continue;
+
+          // Find columns
+          let dateCol = -1, valCol = -1;
+          if (isDividend) {
+            dateCol = headers.indexOf('xd date');
+            if (dateCol < 0) dateCol = headers.indexOf('ex date');
+            if (dateCol < 0) dateCol = headers.indexOf('pay date');
+            if (dateCol < 0) dateCol = headers.findIndex(h => h.includes('date'));
+
+            valCol = headers.indexOf('gross dividend');
+            if (valCol < 0) valCol = headers.indexOf('gross dividends');
+            if (valCol < 0) valCol = headers.indexOf('dividend');
+            if (valCol < 0) valCol = headers.findIndex(h => h.includes('dividend') || h.includes('gross'));
+          } else {
+            dateCol = headers.indexOf('price date');
+            if (dateCol < 0) dateCol = headers.indexOf('date');
+            if (dateCol < 0) dateCol = headers.indexOf('as at');
+            if (dateCol < 0) dateCol = headers.findIndex(h => h.includes('date'));
+
+            valCol = headers.indexOf('price');
+            if (valCol < 0) valCol = headers.indexOf('nav');
+            if (valCol < 0) valCol = headers.indexOf('bid price');
+            if (valCol < 0) valCol = headers.findIndex(h => h.includes('price') || h.includes('nav'));
+          }
+
+          if (dateCol < 0 || valCol < 0) {
+            console.warn(`    Cannot find columns`);
+            continue;
+          }
+
+          console.log(`    dateCol=${dateCol}(${headers[dateCol]}) valCol=${valCol}(${headers[valCol]})`);
+
+          // Parse data
+          const data = [];
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row[dateCol] == null || row[dateCol] === '') continue;
+            
+            // Handle date - could be Excel number, ISO string, or DD/MM/YYYY string
+            let date;
+            const rawDate = row[dateCol];
+            if (typeof rawDate === 'number') {
+              // Excel date number
+              date = new Date((rawDate-25569)*86400000);
+            } else if (typeof rawDate === 'string') {
+              // Try DD/MM/YYYY format first (most common in these files)
+              const parts = rawDate.split('/');
+              if (parts.length === 3) {
+                // DD/MM/YYYY
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1; // JS months are 0-indexed
+                const year = parseInt(parts[2]);
+                date = new Date(year, month, day);
+              } else {
+                // Fallback to default parsing
+                date = new Date(rawDate);
+              }
+            } else {
+              date = new Date(rawDate);
+            }
+            
+            // Handle value - could be string or number
+            const value = parseFloat(String(row[valCol]).trim());
+            
+            if (!isNaN(date.getTime()) && !isNaN(value) && value > 0) {
+              data.push({ date, value });
+            }
+          }
+
+          console.log(`    Parsed ${data.length} rows`);
+          if (isDividend) result.dividends.push(...data);
+          else result.prices.push(...data);
+        }
+
+        res(result);
+      } catch(err) {
+        console.error(err);
+        res(null);
+      }
+    };
+    reader.readAsBinaryString(file);
+  });
+}
+
+// ─── PARSE FILE ───────────────────────────────────────────
+
+// ─── BACKTEST ─────────────────────────────────────────────
+function runBacktest() {
+  document.getElementById('results').innerHTML = '';
+  try {
+    const sel = document.getElementById('fundSel');
+    const funds = Array.from(sel.selectedOptions).map(o => o.value).filter(v => v);
+    if (!funds.length) { alert('Select at least one fund'); return; }
+    if (funds.length > 5) { alert('Maximum 5 funds'); return; }
+
+    const planType = document.getElementById('planType').value;
+    const giaType  = document.getElementById('giaType').value;
+    if (planType === 'none' && giaType === 'none') { alert('Select at least one product'); return; }
+
+    const numFunds = funds.length;
+    const cfg = {
+      planType, giaType, numFunds,
+      gwa4Freq:   document.getElementById('gwa4Freq').value,
+      gwa4Amt:    parseFloat(document.getElementById('gwa4Amt').value),
+      gwa4Div:    document.getElementById('gwa4Div').value,
+      promoBonus: parseFloat(document.getElementById('promoBonus').value)/100,
+      giaAmt:     parseFloat(document.getElementById('giaAmt').value),
+      giaDiv:     document.getElementById('giaDiv').value,
+      startDate:  new Date(document.getElementById('startDate').value),
+      duration:   parseInt(document.getElementById('duration').value),
+    };
+
+    const results = [];
+    for (const fund of funds) {
+      if (!fundData[fund]?.length) { alert(`No data for "${fund}". Upload files first.`); return; }
+      const rets = getYearlyReturns(fund, cfg.startDate, cfg.duration);
+      if (!rets) return;
+      results.push({
+        fund,
+        gwa4: planType !== 'none' ? calcGWA4(cfg, rets) : null,
+        gia:  giaType  !== 'none' ? calcGIA(cfg, rets)  : null
+      });
+    }
+    if (results.length) displayResults(results);
+  } catch(err) {
+    alert('Backtest error: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ─── YEARLY RETURNS ───────────────────────────────────────
+function getYearlyReturns(fund, startDate, years) {
+  const data = fundData[fund];
+  const sorted = [...data].sort((a,b) => a.date - b.date);
+  const first = sorted[0].date, last = sorted[sorted.length-1].date;
+  const endDate = new Date(startDate); endDate.setFullYear(endDate.getFullYear()+years);
+
+  if (startDate < first) {
+    alert(`"${fund}"\nData starts: ${first.toLocaleDateString()}\nRequested: ${startDate.toLocaleDateString()}`);
+    return null;
+  }
+  if (endDate > last) {
+    alert(`"${fund}"\nData ends: ${last.toLocaleDateString()}\nNeed until: ${endDate.toLocaleDateString()}`);
+    return null;
+  }
+
+  const yearly = [];
+  for (let y = 0; y < years; y++) {
+    const yS = new Date(startDate); yS.setFullYear(yS.getFullYear()+y);
+    const yE = new Date(yS);       yE.setFullYear(yE.getFullYear()+1);
+    const rows = sorted.filter(d => d.date >= yS && d.date < yE);
+    if (rows.length < 2) {
+      alert(`"${fund}" Year ${y+1}: not enough data`); return null;
+    }
+    const sp = rows[0].price, ep = rows[rows.length-1].price;
+    const totDiv = rows.reduce((s,r) => s+r.dividend, 0);
+    yearly.push({ year:y+1, capRet:(ep-sp)/sp, divRet:totDiv/sp });
+    console.log(`Year ${y+1}: cap=${((ep-sp)/sp*100).toFixed(2)}% div=${(totDiv/sp*100).toFixed(2)}%`);
+  }
+  return yearly;
+}
+
+// ─── CALC GWA4 ────────────────────────────────────────────
+function calcGWA4(cfg, returns) {
+  const numFunds = cfg.numFunds || 1;
+  const totalMonthly = cfg.gwa4Freq === 'monthly' ? cfg.gwa4Amt : cfg.gwa4Amt / 12;
+  const perFundMonthly = totalMonthly / numFunds;
+  const annual = perFundMonthly * 12;
+  
+  // Welcome bonus calculated on TOTAL investment, then split equally
+  const totalAnnual = totalMonthly * 12;
+  const wRateTotal = cfg.planType === 'choice10'
+    ? (totalAnnual>=12000?.40:totalAnnual>=6000?.20:.10)
+    : cfg.planType === 'choice15'
+    ? (totalAnnual>=12000?.55:totalAnnual>=6000?.30:.25)
+    : (totalAnnual>=6000?.15:.00); // choice5
+  const welcomeBonusTotal = totalAnnual * wRateTotal;
+  const welcomeBonus = welcomeBonusTotal / numFunds;
+  
+  const pbStart = cfg.planType === 'choice10' ? 11 : cfg.planType === 'choice15' ? 16 : 6;
+  const lbStart = cfg.planType === 'choice10' ? 10 : cfg.planType === 'choice15' ? 15 : 10;
+  const wd = cfg.gwa4Div==='withdraw', ig = cfg.gwa4Div==='na';
+  
+  // Policy fee rates - varies by plan and year
+  const getPolicyFeeRate = (year) => {
+    if (cfg.planType === 'choice10') {
+      if (year <= 10) return 0.025;
+      else return 0.007;
+    } else if (cfg.planType === 'choice15') {
+      if (year <= 10) return 0.015;
+      else if (year <= 15) return 0.015;
+      else return 0.007;
+    } else { // choice5
+      if (year <= 10) return 0.025;
+      else if (year <= 15) return 0.007;
+      else return 0.007;
+    }
+  };
+  
+  // $5/month fixed fee only for Choice 10 & 15 if annual premium < $6000
+  const fixedMonthlyFee = (cfg.planType !== 'choice5' && totalAnnual < 6000) ? 5 : 0;
+  
+  let acc=0,prem=0,fees=0,bW=0,bP=0,bL=0,bPr=0,dW=0,dR=0;
+
+  for (let y=1; y<=returns.length; y++) {
+    acc+=annual; prem+=annual;
+    
+    if (y===1) { 
+      bW=welcomeBonus; 
+      bPr=annual*cfg.promoBonus; 
+      acc+=bW+bPr; 
+    }
+    
+    // Premium bonus: 2% of premium payment (not account value!)
+    if (y>=pbStart) { 
+      const pb = annual * 0.02;
+      acc += pb; 
+      bP += pb; 
+    }
+    
+    // Policy fee approximation for monthly deduction:
+    // Deduct half before growth, half after growth
+    const annualFeeRate = getPolicyFeeRate(y);
+    const totalAccBeforeFee = acc * numFunds; // Total portfolio value
+    const annualFeeTotal = totalAccBeforeFee * annualFeeRate + (fixedMonthlyFee * 12);
+    const feePerFund = annualFeeTotal / numFunds;
+    const halfFee = feePerFund / 2;
+    
+    // Deduct half the fee before growth
+    acc -= halfFee;
+    fees += halfFee;
+    
+    // Capital growth
+    acc*=(1+returns[y-1].capRet);
+    
+    // Dividends
+    if (!ig) { 
+      const d=acc*returns[y-1].divRet; 
+      if(wd){dW+=d}else{acc+=d;dR+=d;} 
+    }
+    
+    // Loyalty bonus: 0.3% of account value at year end
+    if (y>=lbStart) { 
+      const lb=acc*0.003; 
+      acc+=lb; 
+      bL+=lb; 
+    }
+    
+    // Deduct remaining half of fee after growth
+    acc -= halfFee;
+    fees += halfFee;
+  }
+  
+  const tot=acc+dW, yld=Math.pow(tot/prem,1/returns.length)-1;
+  return {prem,bW,bP,bL,bPr,totB:bW+bP+bL+bPr,dW,dR,fees,acc,gain:tot-prem,yld,dMode:cfg.gwa4Div};
+}
+
+// ─── CALC GIA ─────────────────────────────────────────────
+function calcGIA(cfg, returns) {
+  const numFunds = cfg.numFunds || 1;
+  const wd=cfg.giaDiv==='withdraw', ig=cfg.giaDiv==='na';
+  let acc=0,inv=0,ch=0,dW=0,dR=0;
+
+  if (cfg.giaType==='single') {
+    const perFund = cfg.giaAmt / numFunds;
+    ch = perFund * 0.03;
+    acc = perFund - ch;
+    inv = perFund;
+    for (const r of returns) {
+      acc*=(1+r.capRet);
+      if (!ig) { const d=acc*r.divRet; if(wd){dW+=d}else{acc+=d;dR+=d;} }
+    }
+  } else {
+    const totalMonthly = cfg.giaType === 'monthly' ? cfg.giaAmt : cfg.giaAmt / 12;
+    const perFundMonthly = totalMonthly / numFunds;
+    const mo = cfg.giaType === 'monthly';
+    const periods = mo ? 12 : 1;
+    
+    for (const r of returns) {
+      const pc = mo ? Math.pow(1+r.capRet,1/12)-1 : r.capRet;
+      for (let p=0; p<periods; p++) {
+        const c = perFundMonthly * 0.03;
+        acc += (perFundMonthly - c);  // Deduct 3% before investing
+        inv += perFundMonthly;
+        ch += c;
+        acc *= (1+pc);
+      }
+      if (!ig) { const d=acc*r.divRet; if(wd){dW+=d}else{acc+=d;dR+=d;} }
+    }
+  }
+  const tot=acc+dW, yld=Math.pow(tot/inv,1/returns.length)-1;
+  return {inv,ch,dW,dR,acc,gain:tot-inv,yld,dMode:cfg.giaDiv};
+}
+
+// ─── DISPLAY ──────────────────────────────────────────────
+const f = n => (n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+
+function displayResults(results) {
+  let html = '';
+  const numFunds = results.length;
+  
+  // Show per-fund breakdown if multiple funds
+  if (numFunds > 1) {
+    html += `<div class="card" style="background:#f0f9ff;border-left:4px solid #667eea">
+      <h2>📊 Portfolio Allocation</h2>
+      <p style="color:#666;margin-bottom:10px">${numFunds} funds selected — investment split equally among funds</p>
+    </div>`;
+  }
+  
+  results.forEach(({ fund, gwa4, gia }) => {
+    html += `<h2 style="color:#fff;margin:18px 0 10px">📊 ${fund}${numFunds>1?' (per fund)':''}</h2><div class="rg">`;
+
+    if (gwa4) {
+      const dr = gwa4.dMode==='na' ? '' : gwa4.dMode==='withdraw'
+        ? `<div class="metric"><span class="ml">Dividends Withdrawn</span><span class="mv g">S$${f(gwa4.dW)}</span></div>`
+        : `<div class="metric"><span class="ml">Dividends Reinvested</span><span class="mv g">S$${f(gwa4.dR)}</span></div>`;
+      html += `<div class="card"><h2>GREAT Wealth Advantage 4</h2>
+        <div class="ftag">${fund}</div>
+        <div class="metric"><span class="ml">Total Premiums</span><span class="mv">S$${f(gwa4.prem)}</span></div>
+        <div class="sec">💰 Bonuses</div>
+        <div class="metric" style="padding-left:14px"><span class="ml">Welcome Bonus</span><span class="mv g">S$${f(gwa4.bW)}</span></div>
+        <div class="metric" style="padding-left:14px"><span class="ml">Premium Bonus</span><span class="mv g">S$${f(gwa4.bP)}</span></div>
+        <div class="metric" style="padding-left:14px"><span class="ml">Loyalty Bonus</span><span class="mv g">S$${f(gwa4.bL)}</span></div>
+        <div class="metric" style="padding-left:14px"><span class="ml">Promotional Bonus</span><span class="mv g">S$${f(gwa4.bPr)}</span></div>
+        <div class="metric"><span class="ml"><b>Total Bonuses</b></span><span class="mv g"><b>S$${f(gwa4.totB)}</b></span></div>
+        ${dr}
+        <div class="metric"><span class="ml">Policy Fees</span><span class="mv r">-S$${f(gwa4.fees)}</span></div>
+        <div class="metric"><span class="ml"><b>Final Value</b></span><span class="mv b">S$${f(gwa4.acc)}</span></div>
+        <div class="metric"><span class="ml"><b>Net Gain/Loss</b></span><span class="mv ${gwa4.gain>=0?'g':'r'}">S$${f(gwa4.gain)}</span></div>
+        <div class="metric"><span class="ml"><b>Annualized Yield</b></span><span class="mv ${gwa4.yld>=0?'b':'r'}">${(gwa4.yld*100).toFixed(2)}%</span></div>
+      </div>`;
+    }
+
+    if (gia) {
+      const dr = gia.dMode==='na' ? '' : gia.dMode==='withdraw'
+        ? `<div class="metric"><span class="ml">Dividends Withdrawn</span><span class="mv g">S$${f(gia.dW)}</span></div>`
+        : `<div class="metric"><span class="ml">Dividends Reinvested</span><span class="mv g">S$${f(gia.dR)}</span></div>`;
+      html += `<div class="card"><h2>GREAT Invest Advantage 2</h2>
+        <div class="ftag">${fund}</div>
+        <div class="metric"><span class="ml">Total Invested</span><span class="mv">S$${f(gia.inv)}</span></div>
+        <div class="metric"><span class="ml">Premium Charges (3%)</span><span class="mv r">-S$${f(gia.ch)}</span></div>
+        ${dr}
+        <div class="metric"><span class="ml"><b>Final Value</b></span><span class="mv b">S$${f(gia.acc)}</span></div>
+        <div class="metric"><span class="ml"><b>Net Gain/Loss</b></span><span class="mv ${gia.gain>=0?'g':'r'}">S$${f(gia.gain)}</span></div>
+        <div class="metric"><span class="ml"><b>Annualized Yield</b></span><span class="mv ${gia.yld>=0?'b':'r'}">${(gia.yld*100).toFixed(2)}%</span></div>
+      </div>`;
+    }
+
+    html += '</div>';
+
+    if (gwa4 && gia) {
+      const winner = gwa4.yld > gia.yld ? 'GWA4' : 'GIA2';
+      const diff = Math.abs(gwa4.yld - gia.yld);
+      html += `<div class="card"><h2>⚖️ Comparison: ${fund}</h2>
+        <table><thead><tr><th>Metric</th><th style="text-align:right">GWA4</th><th style="text-align:right">GIA2</th><th style="text-align:right">Diff</th></tr></thead>
+        <tbody>
+        <tr><td>Total Invested</td><td style="text-align:right">S$${f(gwa4.prem)}</td><td style="text-align:right">S$${f(gia.inv)}</td><td style="text-align:right">S$${f(gwa4.prem-gia.inv)}</td></tr>
+        <tr><td>Dividends</td><td style="text-align:right" class="g">S$${f(gwa4.dW+gwa4.dR)}</td><td style="text-align:right" class="g">S$${f(gia.dW+gia.dR)}</td><td style="text-align:right">–</td></tr>
+        <tr><td>Final Value</td><td style="text-align:right;color:#667eea;font-weight:700">S$${f(gwa4.acc)}</td><td style="text-align:right;color:#667eea;font-weight:700">S$${f(gia.acc)}</td><td style="text-align:right;font-weight:700;color:${gwa4.acc>gia.acc?'#10b981':'#ef4444'}">S$${f(gwa4.acc-gia.acc)}</td></tr>
+        <tr><td>Total Return</td><td style="text-align:right;font-weight:700">S$${f(gwa4.acc+gwa4.dW)}</td><td style="text-align:right;font-weight:700">S$${f(gia.acc+gia.dW)}</td><td style="text-align:right;font-weight:700">S$${f((gwa4.acc+gwa4.dW)-(gia.acc+gia.dW))}</td></tr>
+        <tr><td>Annualized Yield</td><td style="text-align:right;font-weight:700;color:${gwa4.yld>=gia.yld?'#10b981':'#ef4444'}">${(gwa4.yld*100).toFixed(2)}%</td><td style="text-align:right;font-weight:700;color:${gia.yld>=gwa4.yld?'#10b981':'#ef4444'}">${(gia.yld*100).toFixed(2)}%</td><td style="text-align:right;font-weight:700">${((gwa4.yld-gia.yld)*100).toFixed(2)}%</td></tr>
+        <tr><td colspan="4" class="wr" style="padding:14px">🏆 Winner: ${winner} with ${(diff*100).toFixed(2)}% higher yield</td></tr>
+        </tbody></table></div>`;
+    }
+  });
+
+  // Combined portfolio totals for multiple funds
+  if (results.length > 1) {
+    html += `<h2 style="color:#fff;margin:30px 0 10px">💼 Combined Portfolio (All ${results.length} Funds)</h2><div class="rg">`;
+    
+    // Sum up GWA4 results
+    if (results[0].gwa4) {
+      const totPrem = results.reduce((s,r) => s+r.gwa4.prem, 0);
+      const totBonuses = results.reduce((s,r) => s+r.gwa4.totB, 0);
+      const totDW = results.reduce((s,r) => s+r.gwa4.dW, 0);
+      const totDR = results.reduce((s,r) => s+r.gwa4.dR, 0);
+      const totFees = results.reduce((s,r) => s+r.gwa4.fees, 0);
+      const totAcc = results.reduce((s,r) => s+r.gwa4.acc, 0);
+      const totRet = totAcc + totDW;
+      const portfolioYld = results.reduce((s,r) => s+r.gwa4.yld, 0) / results.length;
+      
+      const dr = results[0].gwa4.dMode==='na' ? '' : results[0].gwa4.dMode==='withdraw'
+        ? `<div class="metric"><span class="ml">Dividends Withdrawn</span><span class="mv g">S$${f(totDW)}</span></div>`
+        : `<div class="metric"><span class="ml">Dividends Reinvested</span><span class="mv g">S$${f(totDR)}</span></div>`;
+      
+      html += `<div class="card"><h2>GREAT Wealth Advantage 4</h2>
+        <div class="ftag">Portfolio Total</div>
+        <div class="metric"><span class="ml">Total Premiums</span><span class="mv">S$${f(totPrem)}</span></div>
+        <div class="metric"><span class="ml"><strong>Total Bonuses</strong></span><span class="mv g"><strong>S$${f(totBonuses)}</strong></span></div>
+        ${dr}
+        <div class="metric"><span class="ml">Policy Fees</span><span class="mv r">-S$${f(totFees)}</span></div>
+        <div class="metric"><span class="ml"><strong>Final Value</strong></span><span class="mv b">S$${f(totAcc)}</span></div>
+        <div class="metric"><span class="ml"><strong>Net Gain/Loss</strong></span><span class="mv ${totRet-totPrem>=0?'g':'r'}">S$${f(totRet-totPrem)}</span></div>
+        <div class="metric"><span class="ml"><strong>Avg Annualized Yield</strong></span><span class="mv ${portfolioYld>=0?'b':'r'}">${(portfolioYld*100).toFixed(2)}%</span></div>
+      </div>`;
+    }
+    
+    // Sum up GIA2 results
+    if (results[0].gia) {
+      const totInv = results.reduce((s,r) => s+r.gia.inv, 0);
+      const totCh = results.reduce((s,r) => s+r.gia.ch, 0);
+      const totDW = results.reduce((s,r) => s+r.gia.dW, 0);
+      const totDR = results.reduce((s,r) => s+r.gia.dR, 0);
+      const totAcc = results.reduce((s,r) => s+r.gia.acc, 0);
+      const totRet = totAcc + totDW;
+      const portfolioYld = results.reduce((s,r) => s+r.gia.yld, 0) / results.length;
+      
+      const dr = results[0].gia.dMode==='na' ? '' : results[0].gia.dMode==='withdraw'
+        ? `<div class="metric"><span class="ml">Dividends Withdrawn</span><span class="mv g">S$${f(totDW)}</span></div>`
+        : `<div class="metric"><span class="ml">Dividends Reinvested</span><span class="mv g">S$${f(totDR)}</span></div>`;
+      
+      html += `<div class="card"><h2>GREAT Invest Advantage 2</h2>
+        <div class="ftag">Portfolio Total</div>
+        <div class="metric"><span class="ml">Total Invested</span><span class="mv">S$${f(totInv)}</span></div>
+        <div class="metric"><span class="ml">Premium Charges (3%)</span><span class="mv r">-S$${f(totCh)}</span></div>
+        ${dr}
+        <div class="metric"><span class="ml"><strong>Final Value</strong></span><span class="mv b">S$${f(totAcc)}</span></div>
+        <div class="metric"><span class="ml"><strong>Net Gain/Loss</strong></span><span class="mv ${totRet-totInv>=0?'g':'r'}">S$${f(totRet-totInv)}</span></div>
+        <div class="metric"><span class="ml"><strong>Avg Annualized Yield</strong></span><span class="mv ${portfolioYld>=0?'b':'r'}">${(portfolioYld*100).toFixed(2)}%</span></div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  if (results.length > 1) {
+    const gr = results.filter(r=>r.gia).sort((a,b)=>b.gia.yld-a.gia.yld);
+    if (gr.length > 1) {
+      html += `<div class="card"><h2>🏆 Fund Ranking (GIA2)</h2>
+        <table><thead><tr><th>Rank</th><th>Fund</th><th style="text-align:right">Final Value</th><th style="text-align:right">Net Gain</th><th style="text-align:right">Yield</th></tr></thead><tbody>`;
+      gr.forEach(({fund,gia},i) => {
+        html += `<tr ${i===0?'style="background:#f0f9ff;font-weight:700"':''}>
+          <td>${['🥇','🥈','🥉'][i]||i+1}</td><td>${fund}</td>
+          <td style="text-align:right">S$${f(gia.acc)}</td>
+          <td style="text-align:right;color:${gia.gain>=0?'#10b981':'#ef4444'}">S$${f(gia.gain)}</td>
+          <td style="text-align:right;color:#667eea;font-weight:700">${(gia.yld*100).toFixed(2)}%</td></tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+  }
+
+  document.getElementById('results').innerHTML = html;
+}
+
+// ─── LABEL UPDATES ────────────────────────────────────────
+document.getElementById('gwa4Freq').onchange = function() {
+  document.getElementById('gwa4Lbl').textContent = this.value==='monthly'?'Per month':'Per year';
+};
+document.getElementById('giaType').onchange = function() {
+  document.getElementById('giaLbl').textContent = {monthly:'Per month',yearly:'Per year',single:'One-time',none:''}[this.value]||'';
+};
+
+// ─── INIT ─────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  console.log('Dashboard ready.');
+  
+  // Load fund data from external JSON file
+  fundData = await loadFundData();
+  
+  updateDropdown();
+  
+  const fundCount = Object.keys(fundData).length;
+  if (fundCount > 0) {
+    const total = Object.values(fundData).reduce((s,d) => s+d.length, 0);
+    const divFunds = Object.values(fundData).filter(d => d.some(r => r.dividend > 0)).length;
+    setStatus(`✅ ${fundCount} funds ready (${total} records, ${divFunds} with dividends)`, 'ok');
+  } else {
+    setStatus('⚠️ Failed to load fund data. Check console for errors.', 'info');
+  }
+});
+</script>
+</body>
+</html>
